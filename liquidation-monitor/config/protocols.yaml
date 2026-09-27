@@ -1,0 +1,55 @@
+# Protocol registry.
+#
+# One entry per (chain, protocol deployment). Only `enabled: true` entries are
+# scanned. Adapters read every risk parameter from the deployed contracts at
+# startup; nothing here is a substitute for on-chain values, and values are
+# never copied between deployments.
+#
+# `verification` records what was checked against the live chain and how.
+# See docs/PROTOCOL_RESEARCH.md for the full research notes.
+
+- id: aave_v3_bsc
+  chain: bsc
+  protocol: Aave V3
+  adapter: aave_v3
+  enabled: true
+  liquidation_type: repay_and_seize          # direct, partial (close factor), health-factor based
+  access: permissionless                      # Pool.liquidationCall is public; only self-liquidation is rejected
+  addresses:
+    pool_addresses_provider: "0xff75B6da14FfbbfD355Daf7a2731456b3562Ba6D"
+    # Everything below is resolved from the provider at runtime and only
+    # listed for reference / cross-checking.
+    pool: "0x6807dc923806fE8Fd134338EABCA509979a7e0cB"
+    oracle: "0x39bc1bfDa2130d6Bb6DBEfd366939b4c7aa7C697"
+    data_provider: "0xc90Df74A7c16245c5F5C5870327Ceb38Fe5d5328"
+  # Unknown from public endpoints (needs archive node or explorer API key).
+  # Set it once you know it; until then `liqmon index` requires --from-block
+  # or --lookback.
+  deployment_block: null
+  abi_source: "verified source (Sourcify exact_match for Pool proxy; implementation code = aave-v3-origin v3.7, POOL_REVISION 11)"
+  flash_liquidity: [aave_v3]
+  verification:
+    checked_at: "2026-09-27"
+    pool_revision: 11
+    liquidation_logic_library: "0x96D5686812e33Ab509ECCDb38C89d15607B2a413"
+    notes: "LiquidationLogic/FlashLoanLogic runtime bytecode identical to the Avalanche deployment (address prefix masked)."
+
+- id: aave_v3_avalanche
+  chain: avalanche
+  protocol: Aave V3
+  adapter: aave_v3
+  enabled: true
+  liquidation_type: repay_and_seize
+  access: permissionless
+  addresses:
+    pool_addresses_provider: "0xa97684ead0e402dC232d5A977953DF7ECBaB3CDb"
+    pool: "0x794a61358D6845594F94dc1DB02A252b5b4814aD"
+    oracle: "0xEBd36016B3eD09D4693Ed4251c67Bd858c3c7C9C"
+    data_provider: "0x243Aa95cAC2a25651eda86e80bEe66114413c43b"
+  deployment_block: 11970506                  # Pool proxy creation tx 0x300a7d03...9377
+  abi_source: "verified source (Routescan) for Pool implementation 0x6cddFF90124bA51afac5715314db7C9546b32204"
+  flash_liquidity: [aave_v3]
+  verification:
+    checked_at: "2026-09-27"
+    pool_revision: 11
+    liquidation_logic_library: "0x96D5686812e33Ab509ECCDb38C89d15607B2a413"

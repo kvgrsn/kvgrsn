@@ -1,0 +1,63 @@
+# DEX venues used to exit seized collateral.
+#
+# kind: uniswap_v3 -> QuoterV2.quoteExactInput via eth_call (executable quote,
+#                     simulates the swap against live pool state) and
+#                     SwapRouter02-style exactInput((path,recipient,amountIn,amountOutMinimum)).
+# kind: uniswap_v2 -> Router.getAmountsOut / swapExactTokensForTokens.
+#
+# Every quoter/router address below was checked on-chain by calling
+# factory() and comparing against the venue's factory.
+
+bsc:
+  connectors:            # intermediate tokens tried for 2-hop routes
+    WBNB: "0xbb4CdB9CBd36B01bD1cBaEBF2De08d9173bc095c"
+    USDT: "0x55d398326f99059fF775485246999027B3197955"
+    USDC: "0x8AC76a51cc950d9822D68b83fE1Ad97B32Cd580d"
+    BTCB: "0x7130d2A12B9BCbFAe4f2634d864A1Ee1Ce3Ead9c"
+    ETH:  "0x2170Ed0880ac9A755fd29B2688956BD959F933F8"
+  venues:
+    - name: pancakeswap_v3
+      kind: uniswap_v3
+      factory: "0x0BFbCF9fa4f9C56B0F40a671Ad40E0805A091865"
+      quoter: "0xB048Bbc1Ee6b733FFfCFb9e9CeF7375518e25997"      # QuoterV2
+      router: "0x13f4EA83D0bd40E75C8222255bc855a974568Dd4"      # SmartRouter (V3 exactInput, no deadline field)
+      fee_tiers: [100, 500, 2500, 10000]
+    - name: uniswap_v3
+      kind: uniswap_v3
+      factory: "0xdB1d10011AD0Ff90774D0C6Bb92e5C5c8b4461F7"
+      quoter: "0x78D78E420Da98ad378D7799bE8f4AF69033EB077"      # QuoterV2
+      router: "0xB971eF87ede563556b2ED4b1C0b0019111Dd85d2"      # SwapRouter02
+      fee_tiers: [100, 500, 3000, 10000]
+    - name: pancakeswap_v2
+      kind: uniswap_v2
+      factory: "0xcA143Ce32Fe78f1f7019d7d551a6402fC5350c73"
+      router: "0x10ED43C718714eb63d5aA57B78B54704E256024E"
+      fee_bps: 25
+
+avalanche:
+  connectors:
+    WAVAX: "0xB31f66AA3C1e785363F0875A1B74E27b85FD66c7"
+    USDC:  "0xB97EF9Ef8734C71904D8002F8b6Bc66Dd9c48a6E"
+    USDt:  "0x9702230A8Ea53601f5cD2dc00fDBc13d4dF4A8c7"
+    WETHe: "0x49D5c2BdFfac6CE2BFdB6640F4F80f226bc10bAB"
+    BTCb:  "0x152b9d0FdC40C096757F570A51E494bd4b943E50"
+  venues:
+    - name: uniswap_v3
+      kind: uniswap_v3
+      factory: "0x740b1c1de25031C31FF4fC9A62f554A55cdC1baD"
+      quoter: "0xbe0F5544EC67e9B3b2D979aaA43f18Fd87E6257F"      # QuoterV2
+      router: "0xbb00FF08d01D300023C629E8fFfFcb65A5a578cE"      # SwapRouter02
+      fee_tiers: [100, 500, 3000, 10000]
+    - name: traderjoe_v1
+      kind: uniswap_v2
+      factory: "0x9Ad6C38BE94206cA50bb0d90783181662f0Cfa10"
+      router: "0x60aE616a2155Ee3d9A68541Ba4544862310933d4"
+      fee_bps: 30
+    - name: pangolin
+      kind: uniswap_v2
+      factory: "0xefa94DE7a4656D787667C749f7E1223D71E9FD88"
+      router: "0xE54Ca86531e17Ef3616d22Ca28b0D458b6C89106"
+      fee_bps: 30
+    # Not yet supported (listed so the gap is visible):
+    #   Trader Joe Liquidity Book v2.x holds a large share of AVAX/USDC depth.
+    #   Adding an LBQuoter-based venue will materially improve Avalanche exits.

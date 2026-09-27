@@ -1,0 +1,37 @@
+# Runtime settings. Every key can be overridden by an env var named
+# LIQMON_<UPPERCASE_KEY>, e.g. LIQMON_MIN_PROFIT_USD=50.
+
+# Scanning/execution separation: the scanner never broadcasts. The executor
+# module refuses to broadcast while this is true.
+dry_run: true
+
+db_path: data/liqmon.sqlite3
+
+# Profitability
+min_profit_usd: 25.0          # opportunities below this are rejected (after all costs)
+slippage_bps: 50              # haircut applied to the executable swap quote
+safety_buffer_usd: 5.0        # fixed MEV/latency margin per opportunity
+safety_buffer_bps: 100        # plus this fraction of gross proceeds
+gas_price_multiplier: 1.25    # applied to eth_gasPrice for cost estimates
+# Flash-borrow a little more than the quoted debt so interest accrued between
+# quote and inclusion cannot make the flash amount insufficient.
+flash_amount_buffer_bps: 10
+
+# Candidate selection
+watch_health_factor: 1.05     # positions below this are shown as WATCH
+max_pairs_per_position: 3     # (collateral, debt) pairs quoted per liquidatable account
+max_simulations_per_cycle: 10
+
+# Simulation (mandatory before an opportunity is marked executable)
+anvil_bin: anvil              # or absolute path, e.g. ~/.foundry/bin/anvil
+anvil_port: 8546
+simulation_timeout_s: 90
+
+# Alerts (credentials only via env: LIQMON_TELEGRAM_BOT_TOKEN,
+# LIQMON_TELEGRAM_CHAT_ID, LIQMON_DISCORD_WEBHOOK_URL)
+alert_min_profit_usd: 100.0
+alert_desktop: false
+alert_cooldown_s: 900
+
+# Loop
+scan_interval_s: 15
