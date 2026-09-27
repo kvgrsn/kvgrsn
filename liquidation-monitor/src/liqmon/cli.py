@@ -203,6 +203,7 @@ async def cmd_auctions(args: argparse.Namespace) -> int:
 async def cmd_replay(args: argparse.Namespace) -> int:
     import dataclasses
 
+    from .dex.router import restrict_dex
     from .rpc.client import RpcClient
     from .simulation.anvil import AnvilFork
     from .simulation.replay import rebuild_pre_tx_state
@@ -227,10 +228,9 @@ async def cmd_replay(args: argparse.Namespace) -> int:
             base_fee = (await src.get_block(ctx.block)).get("baseFeePerGas")
         fork_url = f"http://127.0.0.1:{port}"
         local = dataclasses.replace(chain, rpc_urls=(fork_url,), requests_per_second=1000.0, confirmations=0)
+        dex = restrict_dex(load_dex()[chain.key], args.venues, args.connectors)
         # The fork fetches untouched historical state lazily, so allow slow calls.
-        sc = ChainScanner(
-            local, [spec], settings, store, load_dex().get(chain.key), anvil_port=port + 1, rpc_timeout_s=900
-        )
+        sc = ChainScanner(local, [spec], settings, store, dex, anvil_port=port + 1, rpc_timeout_s=900)
         report = await sc.run_cycle(
             simulate=not args.no_simulate,
             sync_index=False,
@@ -313,6 +313,10 @@ def main(argv: list[str] | None = None) -> int:
     s.add_argument("--tx", required=True, help="hash of a historical Aave liquidation transaction")
     s.add_argument("--archive-rpc", help="archive-capable RPC (default: first configured endpoint)")
     s.add_argument("--no-simulate", action="store_true")
+    s.add_argument("--venues", nargs="*", help="only quote these DEX venues (names from config/dex.yaml)")
+    s.add_argument(
+        "--connectors", nargs="*", help="only these 2-hop connector tokens (none given = direct pools only)"
+    )
 
     s = sub.add_parser("execute", help="separate executor; DRY_RUN unless every interlock passes")
     s.add_argument("--id", type=int, required=True)

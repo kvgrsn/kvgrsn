@@ -68,10 +68,15 @@ liqmon index --chain bsc --lookback 7000       # BSC: public RPC only allows rec
 liqmon scan                                    # one cycle, both chains, with simulation
 liqmon scan --loop                             # live dashboard
 liqmon check --chain avalanche --account 0x... [--block N]
-liqmon replay --chain avalanche --tx 0x<historical liquidation tx>
+liqmon replay --chain avalanche --tx 0x<historical liquidation tx> [--venues uniswap_v3 --connectors]
 liqmon auctions --chain bsc --clipper 0x2dcFb02CE33955b6Cc0aF34033189DE3ac4C0292   # read-only
 liqmon execute --id <opportunity id>           # dry run: shows the interlocks and the tx it would send
 ```
+
+`replay` reads untouched historical state through anvil one storage slot at a time. On the free
+Avalanche archive endpoint (~0.7–1.7 s per read) a full multi-venue route search can take hours. Restrict
+routing with `--venues`/`--connectors` (empty `--connectors` = direct pools only) or point
+`--archive-rpc` at your own archive node. Anvil caches fetched state under `~/.foundry/cache/rpc/`.
 
 Dashboard columns: CHAIN | PROTOCOL | POSITION | COLLATERAL | DEBT | HF/CR | LIQ TYPE | AUCTION ID |
 DISCOUNT (vs oracle) | CAPITAL REQ | FLASH | EST GAS | EXP PROFIT | SIM STATUS.

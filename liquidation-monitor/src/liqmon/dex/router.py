@@ -55,6 +55,22 @@ def encode_v2_path(tokens: list[str]) -> bytes:
     return abi_encode(["address[]"], [tokens])
 
 
+def restrict_dex(dex: DexConfig, venues: list[str] | None, connectors: list[str] | None) -> DexConfig:
+    """Limit routing to some venues / connector tokens (by name).
+
+    Useful for backtests on slow archive forks, where every untouched pool
+    costs many remote storage reads. An empty connector list means direct
+    pools only.
+    """
+    import dataclasses
+
+    v = tuple(x for x in dex.venues if not venues or x.name in venues)
+    if venues and not v:
+        raise ValueError(f"no venue named {venues}; known: {[x.name for x in dex.venues]}")
+    c = dex.connectors if connectors is None else {k: a for k, a in dex.connectors.items() if k in connectors}
+    return dataclasses.replace(dex, venues=v, connectors=c)
+
+
 @dataclass(frozen=True)
 class _Candidate:
     venue: VenueConfig

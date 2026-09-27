@@ -107,3 +107,14 @@ def test_custom_error_decoding():
     assert decode_revert(data) == "Foo(7)"
     err = "0x08c379a0" + (32).to_bytes(32, "big").hex() + (3).to_bytes(32, "big").hex() + b"abc".ljust(32, b"\0").hex()
     assert decode_revert(err) == "abc"
+
+
+def test_restrict_dex():
+    from liqmon.config import load_dex
+    from liqmon.dex.router import restrict_dex
+
+    dex = load_dex()["avalanche"]
+    r = restrict_dex(dex, ["uniswap_v3"], ["USDC"])
+    assert [v.name for v in r.venues] == ["uniswap_v3"] and list(r.connectors) == ["USDC"]
+    assert restrict_dex(dex, None, []).connectors == {}
+    assert restrict_dex(dex, None, None) == dex
