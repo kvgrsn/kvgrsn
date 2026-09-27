@@ -16,6 +16,7 @@ for one swap are pinned to the same block.
 from __future__ import annotations
 
 import logging
+import math
 from dataclasses import dataclass
 from itertools import product
 from typing import Callable
@@ -36,6 +37,16 @@ ZERO = "0x0000000000000000000000000000000000000000"
 V3_GET_POOL = Fn("getPool(address,address,uint24)", ["address"])
 V3_QUOTE_EXACT_INPUT = Fn("quoteExactInput(bytes,uint256)", ["uint256", "uint160[]", "uint32[]", "uint256"])
 V2_GET_PAIR = Fn("getPair(address,address)", ["address"])
+# Only the leading static fields are decoded, so this works for both the
+# Uniswap (uint8 feeProtocol) and PancakeSwap (uint32 feeProtocol) layouts.
+V3_SLOT0 = Fn("slot0()", ["uint160", "int24"])
+V3_LIQUIDITY = Fn("liquidity()", ["uint128"])
+Q96 = 2**96
+# A first-hop V3 pool whose in-range liquidity cannot absorb the input
+# within this price move is not quoted: the quote would be poor anyway, and
+# a swap that exhausts liquidity walks the whole tick bitmap (thousands of
+# storage reads), which is very slow on lazily-fetching forks.
+MAX_PRICE_MOVE = 0.5
 V2_GET_AMOUNTS_OUT = Fn("getAmountsOut(uint256,address[])", ["uint256[]"])
 
 V2_SWAP_GAS = 110_000
@@ -53,6 +64,22 @@ def encode_v3_path(tokens: list[str], fees: list[int]) -> bytes:
 
 def encode_v2_path(tokens: list[str]) -> bytes:
     return abi_encode(["address[]"], [tokens])
+
+
+def v3_max_input_within_move(sqrt_price_x96: int, liquidity: int, zero_for_one: bool, move: float = MAX_PRICE_MOVE) -> int:
+    """Input amount that moves a V3 pool's price by ``move`` assuming the
+    current in-range liquidity stays constant (standard V3 swap math).
+
+    zero_for_one: token0 in, price (token1 per token0) falls to (1 - move).
+    otherwise:    token1 in, price rises to (1 + move).
+    """
+    if liquidity == 0 or sqrt_price_x96 == 0:
+        return 0
+    if zero_for_one:
+        target = int(sqrt_price_x96 * math.sqrt(1 - move))
+        return liquidity * Q96 * (sqrt_price_x96 - target) // (sqrt_price_x96 * target)
+    target = int(sqrt_price_x96 * math.sqrt(1 + move))
+    return liquidity * (target - sqrt_price_x96) // Q96
 
 
 def restrict_dex(dex: DexConfig, venues: list[str] | None, connectors: list[str] | None) -> DexConfig:
@@ -86,7 +113,7 @@ class RouteFinder:
         # under node eth_call gas caps.
         self.quote_mc = Multicall(client, multicall_address, chunk_size=quote_chunk)
         self.lookup_mc = Multicall(client, multicall_address, chunk_size=300)
-        self._pool_cache: dict[tuple[str, str, str, int], bool] = {}
+        self._pool_cache: dict[tuple[str, str, str, int], str | None] = {}
 
     def _pool_key(self, venue: VenueConfig, a: str, b: str, fee: int) -> tuple[str, str, str, int]:
         x, y = sorted((a.lower(), b.lower()))
@@ -111,10 +138,51 @@ class RouteFinder:
             return
         res = await self.lookup_mc.run(calls, block)
         for key, r in zip(keys, res):
-            self._pool_cache[key] = bool(r.success and r.value and int(r.value, 16) != 0)
+            ok = r.success and r.value and int(r.value, 16) != 0
+            self._pool_cache[key] = to_checksum_address(r.value) if ok else None
+
+    def _pool(self, venue: VenueConfig, a: str, b: str, fee: int) -> str | None:
+        return self._pool_cache.get(self._pool_key(venue, a, b, fee))
 
     def _exists(self, venue: VenueConfig, a: str, b: str, fee: int) -> bool:
-        return self._pool_cache.get(self._pool_key(venue, a, b, fee), False)
+        return self._pool(venue, a, b, fee) is not None
+
+    async def _drop_shallow_first_hops(
+        self, cands: list[_Candidate], amount_in: int, block: int | str
+    ) -> list[_Candidate]:
+        pools = sorted(
+            {
+                p
+                for c in cands
+                if c.venue.kind == "uniswap_v3"
+                and (p := self._pool(c.venue, c.tokens[0], c.tokens[1], c.fees[0])) is not None
+            }
+        )
+        if not pools:
+            return cands
+        calls = [Call(p, f) for p in pools for f in (V3_SLOT0, V3_LIQUIDITY)]
+        res = await self.lookup_mc.run(calls, block, unwrap_single=False)
+        state = {}
+        for i, p in enumerate(pools):
+            s0, liq = res[2 * i], res[2 * i + 1]
+            if s0.success and liq.success:
+                state[p] = (int(s0.value[0]), int(liq.value[0]))
+        kept = []
+        for c in cands:
+            if c.venue.kind != "uniswap_v3":
+                kept.append(c)
+                continue
+            pool = self._pool(c.venue, c.tokens[0], c.tokens[1], c.fees[0])
+            if pool not in state:
+                continue
+            sqrt_p, liq = state[pool]
+            zero_for_one = c.tokens[0].lower() < c.tokens[1].lower()
+            net_in = amount_in * (1_000_000 - c.fees[0]) // 1_000_000
+            if net_in <= v3_max_input_within_move(sqrt_p, liq, zero_for_one):
+                kept.append(c)
+            else:
+                log.debug("skip shallow pool %s (%s fee %d)", pool, c.venue.name, c.fees[0])
+        return kept
 
     def _candidates(self, token_in: str, token_out: str) -> list[_Candidate]:
         cands: list[_Candidate] = []
@@ -166,7 +234,7 @@ class RouteFinder:
         tokens = {token_in, token_out, *self.dex.connectors.values()}
         pairs = {(a, b) for a in tokens for b in tokens if a < b}
         await self._existing_pools(pairs, block)
-        cands = self._candidates(token_in, token_out)
+        cands = await self._drop_shallow_first_hops(self._candidates(token_in, token_out), amount_in, block)
         if not cands:
             return []
         res = await self.quote_mc.run([self._quote_call(c, amount_in) for c in cands], block, unwrap_single=False)

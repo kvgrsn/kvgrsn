@@ -118,3 +118,16 @@ def test_restrict_dex():
     assert [v.name for v in r.venues] == ["uniswap_v3"] and list(r.connectors) == ["USDC"]
     assert restrict_dex(dex, None, []).connectors == {}
     assert restrict_dex(dex, None, None) == dex
+
+
+def test_v3_depth_filter_math():
+    from liqmon.dex.router import Q96, v3_max_input_within_move
+
+    # price 1.0 (sqrtP = Q96), liquidity L: token0 needed to move price to 0.5
+    # is L * (1/sqrt(0.5) - 1) ~= 0.4142 * L; token1 to move to 1.5 is L * (sqrt(1.5) - 1) ~= 0.2247 * L
+    L = 10**18
+    x = v3_max_input_within_move(Q96, L, True, 0.5)
+    y = v3_max_input_within_move(Q96, L, False, 0.5)
+    assert abs(x / L - 0.41421356) < 1e-6
+    assert abs(y / L - 0.22474487) < 1e-6
+    assert v3_max_input_within_move(Q96, 0, True) == 0
