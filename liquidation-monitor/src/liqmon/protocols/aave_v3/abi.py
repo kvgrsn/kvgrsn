@@ -44,6 +44,7 @@ MIN_LEFTOVER_BASE = Fn("MIN_LEFTOVER_BASE()", ["uint256"])
 
 # Oracle
 GET_ASSETS_PRICES = Fn("getAssetsPrices(address[])", ["uint256[]"])
+GET_ASSET_PRICE = Fn("getAssetPrice(address)", ["uint256"])
 BASE_CURRENCY = Fn("BASE_CURRENCY()", ["address"])
 BASE_CURRENCY_UNIT = Fn("BASE_CURRENCY_UNIT()", ["uint256"])
 

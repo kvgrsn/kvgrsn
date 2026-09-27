@@ -227,13 +227,19 @@ class AaveV3Adapter(ProtocolAdapter):
     async def refresh_market(self, block: int | str) -> None:
         """Per-cycle refresh of prices, configs, virtual balances, grace periods."""
         assets = list(self.reserves)
-        calls: list[Call] = [Call(self.oracle, A.GET_ASSETS_PRICES, (assets,), allow_failure=False)]
+        calls: list[Call] = [Call(self.oracle, A.GET_ASSETS_PRICES, (assets,))]
         for a in assets:
             calls.append(Call(self.pool, A.GET_CONFIGURATION, (a,)))
             calls.append(Call(self.pool, A.GET_VIRTUAL_UNDERLYING_BALANCE, (a,)))
             calls.append(Call(self.pool, A.GET_LIQUIDATION_GRACE_PERIOD, (a,)))
         res = await self.ctx.multicall.run(calls, block)
-        prices = list(res[0].value)
+        if res[0].success:
+            prices = list(res[0].value)
+        else:
+            # One broken feed reverts the batch getter; fall back per asset
+            # (0 = unknown price; such reserves are skipped when quoting).
+            single = await self.ctx.multicall.run([Call(self.oracle, A.GET_ASSET_PRICE, (a,)) for a in assets], block)
+            prices = [int(r.value) if r.success else 0 for r in single]
         snap = MarketSnapshot(block=block if isinstance(block, int) else 0)
         for i, a in enumerate(assets):
             snap.prices[a] = int(prices[i])

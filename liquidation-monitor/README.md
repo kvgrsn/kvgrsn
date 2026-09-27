@@ -40,8 +40,10 @@ cd liquidation-monitor
 python3.11 -m venv .venv && . .venv/bin/activate
 pip install -e ".[dev]"
 curl -L https://foundry.paradigm.xyz | bash && foundryup   # anvil/forge for simulation
-(cd contracts && forge build)                                # executor artifact used by the simulator
-pytest                                                       # unit tests (no network)
+(cd contracts && forge build && forge test)                  # executor artifact + contract safety tests
+pytest                                                       # Python unit tests (no network)
+pytest -m network                                            # live read-only checks against both chains
+pytest -m fork                                               # replay a real liquidation on an anvil fork (slow, archive RPC)
 ```
 
 Use your own nodes where you can:
